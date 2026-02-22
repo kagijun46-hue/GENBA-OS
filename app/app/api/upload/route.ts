@@ -25,19 +25,22 @@ export async function POST(req: NextRequest) {
   const audioFile = audio as File;
   const buffer = Buffer.from(await audioFile.arrayBuffer());
 
-  // 一時保存
+  // 一時保存（/tmp は Vercel でも書き込み可能）
   const tmpPath = path.join(os.tmpdir(), `genba-${Date.now()}-${audioFile.name}`);
   await fs.writeFile(tmpPath, buffer);
 
   try {
     const transcription = await transcribe(buffer, audioFile.name);
     const report = await summarize(transcription, constructionName.trim(), location.trim());
-    const outputPath = await saveReport(report);
+    const { outputPath, mdContent, jsonContent, slug } = await saveReport(report);
 
     return NextResponse.json({
       transcription,
       summary: toMarkdown(report),
-      outputPath,
+      outputPath,   // null on Vercel, string on local
+      mdContent,    // for client-side download
+      jsonContent,  // for client-side download
+      slug,
     });
   } finally {
     await fs.unlink(tmpPath).catch(() => undefined);
