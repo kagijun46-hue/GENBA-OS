@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { transcribe } from "@/lib/transcribe";
+import { transcribe, TranscribeError } from "@/lib/transcribe";
 import { summarize, toMarkdown } from "@/lib/summarize";
 import { saveReport } from "@/lib/save";
 
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const audioFile = audio as File;
   const buffer = Buffer.from(await audioFile.arrayBuffer());
 
-  // 一時保存（/tmp は Vercel でも書き込み可能）
+  // 一時保存（Vercel の /tmp も書き込み可能）
   const tmpPath = path.join(os.tmpdir(), `genba-${Date.now()}-${audioFile.name}`);
   await fs.writeFile(tmpPath, buffer);
 
@@ -37,11 +37,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       transcription,
       summary: toMarkdown(report),
-      outputPath,   // null on Vercel, string on local
-      mdContent,    // for client-side download
-      jsonContent,  // for client-side download
+      outputPath,
+      mdContent,
+      jsonContent,
       slug,
     });
+  } catch (err) {
+    if (err instanceof TranscribeError) {
+      return NextResponse.json({ error: err.userMessage }, { status: err.statusCode });
+    }
+    console.error("[/api/upload]", err);
+    return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   } finally {
     await fs.unlink(tmpPath).catch(() => undefined);
   }

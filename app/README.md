@@ -14,6 +14,13 @@ npm run dev
 
 ブラウザで http://localhost:3000 を開く。
 
+**環境変数の設定（初回のみ）:**
+
+```bash
+cp ../.env.example .env.local
+# .env.local を開いて OPENAI_API_KEY を設定する
+```
+
 ローカルでは処理結果を `outputs/` ディレクトリに `.md` / `.json` で保存する。
 
 ---
@@ -26,15 +33,33 @@ npm run dev
 2. https://vercel.com/new でリポジトリをインポート
 3. **「Root Directory」を `app` に設定する**（⚠️ここが重要）
 4. Framework は **Next.js** が自動検出される
-5. 「Deploy」をクリック
+5. **「Environment Variables」に `OPENAI_API_KEY` を追加する**（下記参照）
+6. 「Deploy」をクリック
 
 ```
 Project Settings
-└── Root Directory: app   ← ここを必ず設定する
+├── Root Directory: app          ← ここを必ず設定する
+└── Environment Variables
+    └── OPENAI_API_KEY = sk-...  ← Whisper 文字起こしに必要
 ```
 
 > **Note:** `app/` 配下が Next.js プロジェクトのルートです。
 > Root Directory を設定しないとビルドが失敗します。
+
+### Vercel に環境変数を設定する方法
+
+デプロイ後に追加・変更する場合:
+
+1. Vercel のプロジェクトページ → **Settings** → **Environment Variables**
+2. 以下を追加:
+
+| Name | Value | Environments |
+|---|---|---|
+| `OPENAI_API_KEY` | `sk-...（OpenAIのキー）` | Production, Preview, Development |
+
+3. **Save** → **Redeploy** で反映される
+
+> OpenAI のキーは https://platform.openai.com/api-keys で発行できます（無料枠あり）。
 
 ### Vercel 上の動作の違い
 
@@ -84,13 +109,13 @@ Vercel 上ではファイルの永続保存ができないため、生成した�
 
 ## 差し替えポイント
 
-| ファイル | 内容 |
-|---|---|
-| `lib/transcribe.ts` | Whisper API 等に差し替え |
-| `lib/summarize.ts` | Claude API 等に差し替え |
+| ファイル | 現在の実装 | 差し替え先の例 |
+|---|---|---|
+| `lib/transcribe.ts` | OpenAI Whisper API ✅ | Azure Speech, Google STT |
+| `lib/summarize.ts` | ダミー（固定テンプレ） | Claude API, GPT-4o |
 
-環境変数は `.env.example` → `.env.local` にコピーして設定:
+環境変数は `.env.example` を参照:
 
 ```bash
-cp ../.env.example app/.env.local
+cp ../.env.example .env.local  # ← app/ ディレクトリ内で実行
 ```
