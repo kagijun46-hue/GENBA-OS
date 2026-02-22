@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GENBA-OS
 
-## Getting Started
+音声アップロード → 文字起こし → 現場日報テンプレ要約 → `/outputs` に md/json 保存
 
-First, run the development server:
+## セットアップ・起動
 
 ```bash
+cd app
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+ブラウザで http://localhost:3000 を開く。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 使い方
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. 工事名・場所を入力
+2. 音声ファイル（m4a / wav / mp3）を選択
+3. 「実行」ボタンをクリック
+4. 文字起こしと現場日報が画面に表示され、`../outputs/` に md・json が保存される
 
-## Learn More
+## API
 
-To learn more about Next.js, take a look at the following resources:
+`POST /api/upload`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| フィールド | 型 | 説明 |
+|---|---|---|
+| constructionName | string | 工事名 |
+| location | string | 場所 |
+| audio | File | 音声ファイル |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 環境変数
 
-## Deploy on Vercel
+`.env.example` をコピーして `.env.local` を作成:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+cp ../.env.example app/.env.local
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 差し替えポイント
+
+- `lib/transcribe.ts` → Whisper API 等に差し替え
+- `lib/summarize.ts` → Claude API 等に差し替え
