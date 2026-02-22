@@ -40,7 +40,7 @@ cp ../.env.example .env.local
 Project Settings
 ├── Root Directory: app          ← ここを必ず設定する
 └── Environment Variables
-    └── OPENAI_API_KEY = sk-...  ← Whisper 文字起こしに必要
+    └── OPENAI_API_KEY = YOUR_OPENAI_API_KEY  ← Whisper 文字起こしに必要
 ```
 
 > **Note:** `app/` 配下が Next.js プロジェクトのルートです。
@@ -55,7 +55,7 @@ Project Settings
 
 | Name | Value | Environments |
 |---|---|---|
-| `OPENAI_API_KEY` | `sk-...（OpenAIのキー）` | Production, Preview, Development |
+| `OPENAI_API_KEY` | OpenAI のキー | Production, Preview, Development |
 
 3. **Save** → **Redeploy** で反映される
 
