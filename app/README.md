@@ -1,6 +1,6 @@
 # GENBA-OS
 
-音声アップロード → 文字起こし → 現場日報テンプレ要約 → md/json 保存（またはダウンロード）
+録音・貼り付け → 文字起こし → AI 日報生成 → md/json 保存（またはダウンロード）
 
 ---
 
@@ -18,10 +18,12 @@ npm run dev
 
 ```bash
 cp ../.env.example .env.local
-# .env.local を開いて OPENAI_API_KEY を設定する
+# .env.local を開いて GROQ_API_KEY を設定する
 ```
 
-ローカルでは処理結果を `outputs/` ディレクトリに `.md` / `.json` で保存する。
+> `GROQ_API_KEY` がなくても「テキスト貼り付け」モードは動作します（LLM 要約なし）。
+
+ローカルでは処理結果を `outputs/` ディレクトリに `.md` / `.json` で保存します。
 
 ---
 
@@ -33,18 +35,17 @@ cp ../.env.example .env.local
 2. https://vercel.com/new でリポジトリをインポート
 3. **「Root Directory」を `app` に設定する**（⚠️ここが重要）
 4. Framework は **Next.js** が自動検出される
-5. **「Environment Variables」に `OPENAI_API_KEY` を追加する**（下記参照）
+5. **「Environment Variables」に `GROQ_API_KEY` を追加する**（下記参照）
 6. 「Deploy」をクリック
 
 ```
 Project Settings
-├── Root Directory: app          ← ここを必ず設定する
+├── Root Directory: app      ← ここを必ず設定する
 └── Environment Variables
-    └── OPENAI_API_KEY = YOUR_OPENAI_API_KEY  ← Whisper 文字起こしに必要
+    └── GROQ_API_KEY = YOUR_GROQ_API_KEY
 ```
 
-> **Note:** `app/` 配下が Next.js プロジェクトのルートです。
-> Root Directory を設定しないとビルドが失敗します。
+> **Note:** `app/` 配下が Next.js プロジェクトのルートです。Root Directory を設定しないとビルドが失敗します。
 
 ### Vercel に環境変数を設定する方法
 
@@ -55,11 +56,11 @@ Project Settings
 
 | Name | Value | Environments |
 |---|---|---|
-| `OPENAI_API_KEY` | OpenAI のキー | Production, Preview, Development |
+| `GROQ_API_KEY` | Groq のキー | Production, Preview, Development |
 
 3. **Save** → **Redeploy** で反映される
 
-> OpenAI のキーは https://platform.openai.com/api-keys で発行できます（無料枠あり）。
+> Groq のキーは https://console.groq.com/keys で無料取得できます。
 
 ### Vercel 上の動作の違い
 
@@ -68,40 +69,38 @@ Project Settings
 | 結果の保存 | `outputs/` に md/json 保存 | 保存なし（永続 FS なし） |
 | 結果の取得 | 保存先パスを表示 | 画面上にダウンロードボタンを表示 |
 
-Vercel 上ではファイルの永続保存ができないため、生成した日報は画面から `.md` / `.json` としてダウンロードできます。
-
 ---
 
 ## 使い方
 
-### iPhone + SuperWhisper で使う（推奨・キー不要）
+### テキスト貼り付け（推奨・GROQ_API_KEY なしでも動く）
 
-現場で素早く日報化するメインフロー:
+1. SuperWhisper などで録音・文字起こしし、テキストをコピー
+2. GENBA-OS を開く → **「テキスト貼り付け」タブ**（デフォルト）
+3. 工事名・場所を入力
+4. テキスト欄を長押し → **ペースト**
+5. **「日報を生成する」**をタップ
 
-1. **SuperWhisper**（または Voice Memos + 任意の文字起こしアプリ）で現場音声を録音・文字起こし
-2. 文字起こしテキストを**コピー**
-3. GENBA-OS を Safari で開く → **「テキスト貼り付け」タブ**（デフォルト）
-4. 工事名・場所を入力
-5. テキスト欄を**長押し → ペースト**
-6. **「日報を生成する」**ボタンをタップ
-7. 日報が生成 → `.md` / `.json` をダウンロード
+> `GROQ_API_KEY` を設定すると Groq LLM が日報を自動整形します。未設定の場合はテキストをそのまま整形します。
 
-> API キー不要で動作します。テキスト貼り付けモードは Whisper を使いません。
+### ブラウザで録音（GROQ_API_KEY 必要）
 
-### 音声ファイルを直接アップロードする場合
-
-`OPENAI_API_KEY` を設定した環境向け:
-
-1. **「音声アップロード」タブ**を選択
+1. **「録音」タブ**を選択
 2. 工事名・場所を入力
-3. 音声ファイル（m4a / wav / mp3）を選択
-4. 「実行」をタップ → アップロード → 文字起こし → 要約 → 保存 の順に進捗表示
+3. **「録音開始」**をタップ（マイク許可が必要）
+4. 録音後 **「録音停止」**→ **「日報を生成する」**をタップ
+
+### 音声ファイルをアップロード（GROQ_API_KEY 必要）
+
+1. **「音声ファイル」タブ**を選択
+2. 工事名・場所を入力
+3. 音声ファイル（m4a / wav / mp3）を選択 → **「実行」**をタップ
 
 ---
 
 ## API
 
-`POST /api/summarize`（JSON、テキスト貼り付けモード）
+`POST /api/summarize`（JSON — テキスト貼り付け・録音モード）
 
 | フィールド | 型 | 説明 |
 |---|---|---|
@@ -109,7 +108,7 @@ Vercel 上ではファイルの永続保存ができないため、生成した�
 | `location` | string | 場所 |
 | `transcription` | string | 文字起こしテキスト |
 
-`POST /api/upload`（multipart/form-data、音声アップロードモード）
+`POST /api/upload`（multipart/form-data — 音声ファイルモード）
 
 | フィールド | 型 | 説明 |
 |---|---|---|
@@ -117,7 +116,7 @@ Vercel 上ではファイルの永続保存ができないため、生成した�
 | `location` | string | 場所 |
 | `audio` | File | 音声ファイル |
 
-どちらも同じ形式のレスポンスを返す:
+共通レスポンス:
 
 ```json
 {
@@ -136,8 +135,8 @@ Vercel 上ではファイルの永続保存ができないため、生成した�
 
 | ファイル | 現在の実装 | 差し替え先の例 |
 |---|---|---|
-| `lib/transcribe.ts` | OpenAI Whisper API ✅ | Azure Speech, Google STT |
-| `lib/summarize.ts` | ダミー（固定テンプレ） | Claude API, GPT-4o |
+| `lib/transcribe.ts` | Groq whisper-large-v3 ✅ | Azure Speech, Google STT |
+| `lib/summarize.ts` | Groq llama-3.3-70b ✅ | Claude API, GPT-4o |
 
 環境変数は `.env.example` を参照:
 
