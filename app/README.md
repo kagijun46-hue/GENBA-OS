@@ -115,6 +115,80 @@ Project Settings
 
 ---
 
+## トラブルシューティング：「GROQ_API_KEY が未設定」が消えない
+
+### 原因と確認手順
+
+#### Step 1: `/api/health` で実際の状態を確認する
+
+本番 URL で以下を開く:
+
+```
+https://genba-os.vercel.app/api/health
+```
+
+| レスポンス例 | 意味 |
+|---|---|
+| `"groqKeySet": true` | キーは正しく設定済み → ページをリロード |
+| `"groqKeySet": false, "vercelEnv": "production"` | **本番環境でキーが未設定** → Step 2 へ |
+| `"groqKeySet": false, "vercelEnv": "unknown"` | Vercel 外で実行中 |
+
+#### Step 2: Vercel の設定を確認する
+
+**よくある間違い：Team/Shared 変数を設定したが Project にリンクされていない**
+
+Vercel には環境変数の設定場所が 2 か所あります:
+
+| 設定場所 | パス | 有効範囲 |
+|---|---|---|
+| **Team** (Shared) | Team Settings → Environment Variables | チーム全体（個別プロジェクトへのリンクが必要） |
+| **Project** ← ✅ここに入れる | Project → Settings → Environment Variables | そのプロジェクトのみ（確実に反映される） |
+
+**必ず Project の Environment Variables に直接入れてください。**
+
+#### Step 3: 正しい設定手順
+
+1. `https://vercel.com/` → 該当プロジェクト（GENBA-OS）を選択
+2. **Settings** タブ → **Environment Variables** をクリック
+3. 以下を **追加**（既にある場合は値を **Edit** して上書き）:
+
+   | Name | Value | Environment |
+   |---|---|---|
+   | `GROQ_API_KEY` | （Groq のキー） | ✅ **Production** にチェック |
+   | `OPENAI_API_KEY` | （OpenAI のキー） | ✅ **Production** にチェック |
+
+   > **Sensitive** 扱いにするとログに値が出なくなるので推奨。
+
+4. **Save** をクリック
+5. **Deployments** タブ → 最新のデプロイの「...」→ **Redeploy** をクリック
+
+   > ⚠️ **Redeploy は必須です。** 環境変数を追加しただけでは現在動いているインスタンスには反映されません。
+
+#### Step 4: Redeploy 後に `/api/health` を再度確認
+
+```json
+{
+  "groqKeySet": true,
+  "openaiKeySet": true,
+  "vercelEnv": "production",
+  "region": "iad1",
+  "ts": "2026-02-23T12:34:56.789Z"
+}
+```
+
+`vercelEnv: "production"` かつ `groqKeySet: true` になれば完了。
+
+#### ビルドログでの確認方法
+
+Vercel の **Deployments** → ビルドログ（Build & Development Settings → View Logs）に以下が出ていれば設定が正しく読み込まれています:
+
+```
+[next.config] ✓ GROQ_API_KEY is SET
+[next.config] ✓ OPENAI_API_KEY is SET
+```
+
+---
+
 ## API
 
 `POST /api/summarize`（JSON — テキスト貼り付けモード）
@@ -133,10 +207,16 @@ Project Settings
 | `location` | string | 場所 |
 | `audio` | File | 音声ファイル |
 
-`GET /api/health`（環境変数の設定状況確認）
+`GET /api/health`（環境変数の設定状況確認・キャッシュなし）
 
 ```json
-{ "groqKeySet": true, "openaiKeySet": false }
+{
+  "groqKeySet":   true,
+  "openaiKeySet": false,
+  "vercelEnv":    "production",
+  "region":       "iad1",
+  "ts":           "2026-02-23T12:34:56.789Z"
+}
 ```
 
 共通レスポンス:
