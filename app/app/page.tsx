@@ -2,14 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// ─── Design Tokens ────────────────────────────────────────────────────────────
+// ─── Design Tokens (Dark Industrial) ─────────────────────────────────────────
 
 const T = {
-  blue:   "#0055cc",
-  red:    "#dc2626",
-  green:  "#16a34a",
-  black:  "#111111",
-  radius: 4,
+  bg:          "#1A1A1A",
+  bgCard:      "#242424",
+  bgInput:     "#2C2C2C",
+  border:      "#4A4A4A",
+  borderFill:  "#E0E0E0",
+  textMain:    "#F5F5F5",
+  textSub:     "#BDBDBD",
+  textMuted:   "#757575",
+  blue:        "#4A90E2",
+  red:         "#EF4444",
+  green:       "#4CAF50",
+  yellow:      "#F59E0B",
+  radius:      4,
 } as const;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -26,6 +34,11 @@ interface Result {
   mdContent: string;
   jsonContent: string;
   slug: string;
+}
+
+interface HealthData {
+  groqKeySet: boolean;
+  openaiKeySet: boolean;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -59,7 +72,19 @@ const TAB_LABELS: Record<Mode, string> = {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function download(content: string, filename: string, mime: string) {
+/** UTF-8 BOM 付きでダウンロード（Windows メモ帳・LINE で文字化けしない） */
+function downloadWithBom(content: string, filename: string, mime: string) {
+  const bom = "\uFEFF";
+  const blob = new Blob([bom + content], { type: `${mime};charset=utf-8` });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadPlain(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -119,10 +144,7 @@ function extractLocationCandidates(text: string): string[] {
 function ChipRow({ chips, onSelect }: { chips: string[]; onSelect: (v: string) => void }) {
   if (!chips.length) return null;
   return (
-    <div style={{
-      display: "flex", gap: 8, overflowX: "auto",
-      padding: "6px 0 2px",
-    }}>
+    <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "6px 0 2px" }}>
       {chips.map((chip) => (
         <button
           key={chip}
@@ -131,7 +153,7 @@ function ChipRow({ chips, onSelect }: { chips: string[]; onSelect: (v: string) =
           style={{
             flexShrink: 0, padding: "5px 12px",
             fontSize: 12, fontWeight: 700,
-            background: "#eef3ff", color: T.blue,
+            background: "#1C2A3A", color: T.blue,
             border: `2px solid ${T.blue}`, borderRadius: T.radius,
             cursor: "pointer", whiteSpace: "nowrap",
             touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
@@ -175,9 +197,16 @@ export default function Home() {
   const chunksRef        = useRef<Blob[]>([]);
   const timerRef         = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // 429 countdown
+  const [retryCountdown, setRetryCountdown] = useState(0);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   // toast
   const [toast, setToast]     = useState("");
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // health check
+  const [health, setHealth] = useState<HealthData | null>(null);
 
   // cleanup on unmount
   useEffect(() => {
@@ -186,7 +215,16 @@ export default function Home() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (extractTimerRef.current) clearTimeout(extractTimerRef.current);
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+      if (countdownRef.current) clearInterval(countdownRef.current);
     };
+  }, []);
+
+  // health check on mount
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d: HealthData) => setHealth(d))
+      .catch(() => {});
   }, []);
 
   // Feature A: debounced auto-extract (600ms)
@@ -211,6 +249,7 @@ export default function Home() {
 
   const canSubmit =
     !isProcessing &&
+    retryCountdown === 0 &&
     !!commonOk &&
     (mode === "paste"  ? !!pastedText.trim() :
      mode === "record" ? recordState === "recorded" :
@@ -218,12 +257,29 @@ export default function Home() {
 
   const disabledReason =
     isProcessing                                      ? "" :
+    retryCountdown > 0                                ? `${retryCountdown}秒後に再試行できます` :
     !constructionName.trim()                          ? "工事名を入力してください" :
     !location.trim()                                  ? "場所を入力してください" :
     mode === "paste"  && !pastedText.trim()           ? "テキストを貼り付けてください" :
     mode === "record" && recordState !== "recorded"   ? "先に録音してください" :
     mode === "audio"  && !file                        ? "音声ファイルを選択してください" :
     "";
+
+  // ── countdown ────────────────────────────────────────
+  function startCountdown(sec: number) {
+    setRetryCountdown(sec);
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    countdownRef.current = setInterval(() => {
+      setRetryCountdown((s) => {
+        if (s <= 1) {
+          clearInterval(countdownRef.current!);
+          countdownRef.current = null;
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+  }
 
   // ── toast ─────────────────────────────────────────────
   function showToast(msg: string) {
@@ -289,6 +345,14 @@ export default function Home() {
     setRecordSeconds(0);
   }
 
+  // ── error handler helper ──────────────────────────────
+  function handleApiError(res: Response, json: { error?: string }) {
+    const msg = json.error ?? "不明なエラーが発生しました";
+    setStatus("error");
+    setError(msg);
+    if (res.status === 429) startCountdown(30);
+  }
+
   // ── upload helper (record + audio share this) ─────────
   async function submitToUpload(audioFile: File) {
     const formData = new FormData();
@@ -304,11 +368,7 @@ export default function Home() {
     setStatus("summarizing");
 
     const json = await res.json();
-    if (!res.ok) {
-      setStatus("error");
-      setError(json.error ?? "不明なエラーが発生しました");
-      return;
-    }
+    if (!res.ok) { handleApiError(res, json); return; }
 
     setStatus("saving");
     await new Promise((r) => setTimeout(r, 280));
@@ -335,7 +395,7 @@ export default function Home() {
     });
 
     const json = await res.json();
-    if (!res.ok) { setStatus("error"); setError(json.error ?? "不明なエラーが発生しました"); return; }
+    if (!res.ok) { handleApiError(res, json); return; }
 
     setStatus("saving");
     await new Promise((r) => setTimeout(r, 280));
@@ -366,8 +426,9 @@ export default function Home() {
                         handleAudioSubmit;
 
   const submitLabel =
-    isProcessing       ? "処理中..." :
-    status === "error" ? "再試行" :
+    isProcessing         ? "処理中..." :
+    retryCountdown > 0   ? `${retryCountdown}秒後に再試行` :
+    status === "error"   ? "再試行" :
     "日報を生成する";
 
   // ── Feature B: action bar ─────────────────────────────
@@ -388,9 +449,24 @@ export default function Home() {
 
   function downloadMd() {
     if (!result) return;
-    download(result.mdContent, `${result.slug}.md`, "text/markdown");
+    // UTF-8 BOM 付き → Windows メモ帳/LINE で文字化けしない
+    downloadWithBom(result.mdContent, `${result.slug}.md`, "text/markdown");
     showToast("ダウンロード開始");
   }
+
+  function downloadJson() {
+    if (!result) return;
+    downloadPlain(result.jsonContent, `${result.slug}.json`, "application/json");
+    showToast("ダウンロード開始");
+  }
+
+  // GROQ key missing: show banner on record/audio tabs
+  const showGroqMissingBanner =
+    health !== null && !health.groqKeySet && (mode === "record" || mode === "audio");
+
+  // OpenAI key missing: show subtle notice in paste tab
+  const showOpenAiMissingNotice =
+    health !== null && !health.openaiKeySet && mode === "paste";
 
   // ── render ────────────────────────────────────────────
   return (
@@ -400,19 +476,25 @@ export default function Home() {
         margin: "0 auto",
         fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif",
         padding: "0 0 120px",
+        background: T.bg,
+        minHeight: "100vh",
       }}>
 
         {/* ── Header ── */}
         <div style={{
           padding: "20px 20px 16px",
-          borderBottom: `3px solid ${T.black}`,
+          borderBottom: `3px solid ${T.textMain}`,
+          background: T.bg,
         }}>
-          <h1 style={{ fontSize: 26, fontWeight: 900, letterSpacing: 1, color: T.black, margin: 0 }}>
+          <h1 style={{
+            fontSize: 26, fontWeight: 900, letterSpacing: 1,
+            color: T.textMain, margin: 0,
+          }}>
             GENBA-OS
           </h1>
           <p style={{
             fontSize: 11, fontWeight: 700, letterSpacing: 2,
-            color: "#666", margin: "3px 0 0", textTransform: "uppercase",
+            color: T.textSub, margin: "3px 0 0", textTransform: "uppercase",
           }}>
             Field Report System
           </p>
@@ -423,10 +505,10 @@ export default function Home() {
           {/* ── Tabs ── */}
           <div style={{
             display: "flex",
-            border: `2px solid ${T.black}`,
+            border: `2px solid ${T.textMain}`,
             borderRadius: T.radius,
             overflow: "hidden",
-            marginBottom: 24,
+            marginBottom: 20,
           }}>
             {(["paste", "record", "audio"] as Mode[]).map((m, i) => (
               <button
@@ -436,10 +518,10 @@ export default function Home() {
                 style={{
                   flex: 1, padding: "11px 4px",
                   fontSize: 14, fontWeight: 700,
-                  background: mode === m ? T.black : "#fff",
-                  color: mode === m ? "#fff" : T.black,
+                  background: mode === m ? T.textMain : T.bg,
+                  color: mode === m ? T.bg : T.textMain,
                   border: "none",
-                  borderRight: i < 2 ? `2px solid ${T.black}` : "none",
+                  borderRight: i < 2 ? `2px solid ${T.textMain}` : "none",
                   cursor: "pointer",
                   touchAction: "manipulation",
                   WebkitTapHighlightColor: "transparent",
@@ -450,16 +532,65 @@ export default function Home() {
             ))}
           </div>
 
+          {/* ── GROQ key missing banner ── */}
+          {showGroqMissingBanner && (
+            <div style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              background: "#2A1F00",
+              border: `2px solid ${T.yellow}`,
+              borderLeft: `5px solid ${T.yellow}`,
+              borderRadius: T.radius,
+              color: "#FEF3C7",
+              fontSize: 13,
+              lineHeight: 1.7,
+            }}>
+              <strong>⚠ GROQ_API_KEY が未設定です</strong><br />
+              録音・ファイルタブの文字起こしには Groq API キーが必要です。<br />
+              Vercel: <code style={{ background: "#3A2F00", padding: "1px 5px", borderRadius: 3 }}>
+                Settings → Environment Variables
+              </code> に追加してください。<br />
+              <button
+                type="button"
+                onClick={() => switchMode("paste")}
+                style={{
+                  marginTop: 8, fontSize: 13, fontWeight: 700,
+                  color: T.yellow, background: "none", border: "none",
+                  cursor: "pointer", padding: 0, textDecoration: "underline",
+                }}
+              >
+                → 代わりに「貼り付け」タブを使う（SuperWhisper 推奨）
+              </button>
+            </div>
+          )}
+
           {/* ── Paste hint ── */}
           {mode === "paste" && (
             <div style={{
-              fontSize: 13, color: "#333", background: "#fffbf0",
-              border: `2px solid #e8c84a`,
+              fontSize: 13, color: T.textSub,
+              background: "#1C2535",
+              border: `2px solid #2D4A7A`,
               borderLeft: `5px solid ${T.blue}`,
               borderRadius: T.radius,
-              padding: "10px 14px", marginBottom: 20, lineHeight: 1.6,
+              padding: "10px 14px", marginBottom: 16, lineHeight: 1.6,
             }}>
               SuperWhisper などで文字起こしたテキストをコピーして貼り付けてください。
+            </div>
+          )}
+
+          {/* ── OpenAI key missing notice (paste tab) ── */}
+          {showOpenAiMissingNotice && (
+            <div style={{
+              marginBottom: 12,
+              padding: "8px 12px",
+              background: "#242424",
+              border: `1px solid ${T.border}`,
+              borderRadius: T.radius,
+              color: T.textMuted,
+              fontSize: 12,
+              lineHeight: 1.6,
+            }}>
+              OPENAI_API_KEY 未設定: テキストをそのまま整形します（AI 要約なし）
             </div>
           )}
 
@@ -478,7 +609,7 @@ export default function Home() {
                 disabled={isProcessing}
                 style={{
                   ...inputStyle,
-                  borderColor: constructionName.trim() ? T.black : "#ccc",
+                  borderColor: constructionName.trim() ? T.borderFill : T.border,
                 }}
               />
               <ChipRow chips={constructionChips} onSelect={(v) => setConstructionName(v)} />
@@ -496,7 +627,7 @@ export default function Home() {
                 disabled={isProcessing}
                 style={{
                   ...inputStyle,
-                  borderColor: location.trim() ? T.black : "#ccc",
+                  borderColor: location.trim() ? T.borderFill : T.border,
                 }}
               />
               <ChipRow chips={locationChips} onSelect={(v) => setLocation(v)} />
@@ -508,7 +639,7 @@ export default function Home() {
                 <label style={labelStyle}>
                   文字起こしテキスト
                   {pastedText && (
-                    <span style={{ fontWeight: 400, color: "#999", fontSize: 12, marginLeft: 8 }}>
+                    <span style={{ fontWeight: 400, color: T.textMuted, fontSize: 12, marginLeft: 8 }}>
                       {pastedText.length} 文字
                     </span>
                   )}
@@ -521,10 +652,12 @@ export default function Home() {
                   style={{
                     width: "100%", minHeight: 220, padding: 14,
                     fontSize: 16, lineHeight: 1.7,
-                    border: `2px solid ${pastedText.trim() ? T.black : "#ccc"}`,
+                    background: T.bgInput,
+                    border: `2px solid ${pastedText.trim() ? T.borderFill : T.border}`,
                     borderRadius: T.radius,
                     boxSizing: "border-box", resize: "vertical",
-                    fontFamily: "inherit", color: "#111", fontWeight: 500,
+                    fontFamily: "inherit",
+                    color: T.textMain, fontWeight: 500,
                     WebkitAppearance: "none",
                   } as React.CSSProperties}
                 />
@@ -544,7 +677,7 @@ export default function Home() {
                     style={{
                       width: "100%", minHeight: 72, fontSize: 18, fontWeight: 900,
                       background: T.red, color: "#fff",
-                      border: `3px solid ${T.black}`, borderRadius: T.radius,
+                      border: `3px solid ${T.textMain}`, borderRadius: T.radius,
                       cursor: "pointer", letterSpacing: 1,
                       touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
                     } as React.CSSProperties}
@@ -554,14 +687,14 @@ export default function Home() {
                 )}
 
                 {recordState === "requesting" && (
-                  <p style={{ color: "#666", fontSize: 14, marginTop: 8, fontWeight: 600 }}>
+                  <p style={{ color: T.textSub, fontSize: 14, marginTop: 8, fontWeight: 600 }}>
                     マイクへのアクセスを許可してください...
                   </p>
                 )}
 
                 {recordState === "recording" && (
                   <div style={{
-                    background: "#fff5f5",
+                    background: "#2A1515",
                     border: `2px solid ${T.red}`,
                     borderRadius: T.radius,
                     padding: "20px 16px", textAlign: "center",
@@ -574,6 +707,7 @@ export default function Home() {
                       <span style={{
                         fontSize: 36, fontWeight: 900,
                         fontVariantNumeric: "tabular-nums", letterSpacing: 2,
+                        color: T.textMain,
                       }}>
                         {fmtTime(recordSeconds)}
                       </span>
@@ -583,8 +717,8 @@ export default function Home() {
                       onClick={stopRecording}
                       style={{
                         width: "100%", minHeight: 52, fontSize: 17, fontWeight: 900,
-                        background: T.black, color: "#fff",
-                        border: `2px solid ${T.black}`, borderRadius: T.radius,
+                        background: T.textMain, color: T.bg,
+                        border: `2px solid ${T.textMain}`, borderRadius: T.radius,
                         cursor: "pointer",
                         touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
                       } as React.CSSProperties}
@@ -596,7 +730,7 @@ export default function Home() {
 
                 {recordState === "recorded" && (
                   <div style={{
-                    background: "#f0fdf4",
+                    background: "#152A1A",
                     border: `2px solid ${T.green}`,
                     borderRadius: T.radius,
                     padding: 16,
@@ -608,7 +742,7 @@ export default function Home() {
                       type="button"
                       onClick={resetRecording}
                       style={{
-                        marginTop: 10, fontSize: 13, color: "#666",
+                        marginTop: 10, fontSize: 13, color: T.textMuted,
                         background: "none", border: "none", cursor: "pointer",
                         textDecoration: "underline", padding: 0,
                       }}
@@ -625,7 +759,8 @@ export default function Home() {
               <div style={{ marginBottom: 24 }}>
                 <label style={labelStyle}>音声ファイル（m4a / wav / mp3）</label>
                 <div style={{
-                  border: `2px solid ${file ? T.black : "#ccc"}`,
+                  background: T.bgCard,
+                  border: `2px solid ${file ? T.borderFill : T.border}`,
                   borderRadius: T.radius,
                   padding: "12px 14px",
                 }}>
@@ -634,10 +769,10 @@ export default function Home() {
                     accept=".m4a,.wav,.mp3,audio/*"
                     onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                     disabled={isProcessing}
-                    style={{ display: "block", fontSize: 16 }}
+                    style={{ display: "block", fontSize: 16, color: T.textMain }}
                   />
                   {file && (
-                    <p style={{ margin: "8px 0 0", fontSize: 13, color: "#555", fontWeight: 600 }}>
+                    <p style={{ margin: "8px 0 0", fontSize: 13, color: T.textSub, fontWeight: 600 }}>
                       {file.name}（{(file.size / 1024).toFixed(1)} KB）
                     </p>
                   )}
@@ -649,7 +784,7 @@ export default function Home() {
 
           {/* ── Step indicator ── */}
           {(isProcessing || status === "done") && (
-            <div style={{ display: "flex", gap: 4, marginTop: 20, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 4, marginTop: 16, flexWrap: "wrap" }}>
               {steps.map((step, i) => {
                 const done   = status === "done" || i < currentStepIdx;
                 const active = i === currentStepIdx;
@@ -658,13 +793,13 @@ export default function Home() {
                     <span style={{
                       padding: "5px 12px", borderRadius: T.radius,
                       fontSize: 13, fontWeight: 700,
-                      background: done ? T.green : active ? T.blue : "#e0e0e0",
-                      color: done || active ? "#fff" : "#888",
+                      background: done ? T.green : active ? T.blue : "#333",
+                      color: done || active ? "#fff" : T.textMuted,
                     }}>
                       {step.label}
                     </span>
                     {i < steps.length - 1 && (
-                      <span style={{ color: "#bbb", margin: "0 4px", fontSize: 12 }}>→</span>
+                      <span style={{ color: T.border, margin: "0 4px", fontSize: 12 }}>→</span>
                     )}
                   </div>
                 );
@@ -675,26 +810,31 @@ export default function Home() {
           {/* ── Error ── */}
           {status === "error" && (
             <div style={{
-              marginTop: 20, padding: "14px 16px",
-              background: "#fff5f5",
-              border: `2px solid ${T.red}`,
-              borderLeft: `5px solid ${T.red}`,
+              marginTop: 16, padding: "14px 16px",
+              background: "#B91C1C",
+              border: `2px solid #DC2626`,
               borderRadius: T.radius,
-              color: T.red, fontSize: 14,
+              color: "#fff", fontSize: 14,
               lineHeight: 1.7, whiteSpace: "pre-wrap",
               wordBreak: "break-word", fontWeight: 600,
             }}>
               {error}
+              {retryCountdown > 0 && (
+                <div style={{ marginTop: 8, fontSize: 13, fontWeight: 700, opacity: 0.9 }}>
+                  ⏱ {retryCountdown}秒後に再試行できます
+                </div>
+              )}
             </div>
           )}
 
           {/* ── Result ── */}
           {status === "done" && result && (
-            <div style={{ marginTop: 40 }}>
+            <div style={{ marginTop: 32 }}>
 
               {result.outputPath && (
-                <p style={{ fontSize: 13, color: "#666", wordBreak: "break-all", marginBottom: 16 }}>
-                  保存先: <code style={{ background: "#f0f0f0", padding: "2px 6px", borderRadius: 3 }}>
+                <p style={{ fontSize: 13, color: T.textMuted, wordBreak: "break-all", marginBottom: 16 }}>
+                  保存先:{" "}
+                  <code style={{ background: "#333", color: T.textSub, padding: "2px 6px", borderRadius: 3 }}>
                     {result.outputPath}
                   </code>
                 </p>
@@ -752,16 +892,16 @@ export default function Home() {
         className="no-print"
         style={{
           position: "fixed", bottom: 0, left: 0, right: 0,
-          background: "#fff",
-          borderTop: `3px solid ${T.black}`,
+          background: T.bg,
+          borderTop: `3px solid ${T.textMain}`,
           padding: "10px 20px 20px",
-          boxShadow: "0 -4px 16px rgba(0,0,0,0.10)",
+          boxShadow: "0 -4px 20px rgba(0,0,0,0.4)",
         }}
       >
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           {!canSubmit && !isProcessing && disabledReason && (
             <p style={{
-              fontSize: 13, color: "#888", fontWeight: 600,
+              fontSize: 13, color: T.textMuted, fontWeight: 600,
               margin: "0 0 8px", textAlign: "center",
             }}>
               ↑ {disabledReason}
@@ -773,10 +913,10 @@ export default function Home() {
             disabled={!canSubmit}
             style={{
               width: "100%", minHeight: 54, fontSize: 17, fontWeight: 900,
-              border: `3px solid ${T.black}`, borderRadius: T.radius,
+              border: `3px solid ${T.textMain}`, borderRadius: T.radius,
               cursor: canSubmit ? "pointer" : "not-allowed",
-              background: canSubmit ? T.blue : "#e0e0e0",
-              color: canSubmit ? "#fff" : "#999",
+              background: canSubmit ? T.blue : "#333",
+              color: canSubmit ? "#fff" : T.textMuted,
               touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
               letterSpacing: 1,
             } as React.CSSProperties}
@@ -791,12 +931,12 @@ export default function Home() {
         <div style={{
           position: "fixed", bottom: 96, left: "50%",
           transform: "translateX(-50%)",
-          background: T.black, color: "#fff",
+          background: T.textMain, color: T.bg,
           padding: "10px 20px",
           borderRadius: T.radius,
           fontSize: 14, fontWeight: 700,
           pointerEvents: "none", whiteSpace: "nowrap",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+          boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
           zIndex: 9999,
         }}>
           {toast}
@@ -811,30 +951,32 @@ export default function Home() {
 const labelStyle: React.CSSProperties = {
   display: "block", marginBottom: 6,
   fontWeight: 700, fontSize: 13,
-  textTransform: "uppercase", letterSpacing: 0.5, color: "#444",
+  textTransform: "uppercase", letterSpacing: 0.5, color: T.textSub,
 };
 
 const inputStyle: React.CSSProperties = {
   width: "100%", padding: "12px 14px", fontSize: 16,
-  border: "2px solid #ccc", borderRadius: 4,
+  border: "2px solid #4A4A4A", borderRadius: T.radius,
   boxSizing: "border-box", WebkitAppearance: "none",
-  color: "#111", fontWeight: 600,
+  background: T.bgInput, color: T.textMain, fontWeight: 600,
 };
 
 const preStyle: React.CSSProperties = {
-  background: "#f4f4f4",
+  background: T.bgCard,
   padding: "14px 16px",
-  borderRadius: 4,
+  borderRadius: T.radius,
   whiteSpace: "pre-wrap",
   wordBreak: "break-word",
   fontSize: 14, lineHeight: 1.75, margin: 0,
-  border: "2px solid #e0e0e0",
+  border: `2px solid ${T.border}`,
+  color: T.textMain,
 };
 
 const actionBtnStyle: React.CSSProperties = {
   padding: "12px 16px", fontSize: 14, fontWeight: 700,
-  cursor: "pointer", background: "#fff",
-  border: `2px solid ${T.black}`, color: T.black,
+  cursor: "pointer",
+  background: T.bgCard, color: T.textMain,
+  border: `2px solid ${T.border}`,
   borderRadius: T.radius,
   touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
 };
@@ -843,5 +985,5 @@ const sectionHeadStyle: React.CSSProperties = {
   fontSize: 15, fontWeight: 900,
   marginBottom: 10,
   textTransform: "uppercase", letterSpacing: 1,
-  color: T.black,
+  color: T.textMain,
 };

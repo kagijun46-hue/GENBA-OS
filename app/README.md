@@ -1,6 +1,17 @@
 # GENBA-OS
 
-録音・貼り付け → 文字起こし → AI 日報生成 → md/json 保存（またはダウンロード）
+録音・貼り付け → 文字起こし（Groq） → AI 日報生成（OpenAI） → md/json 保存またはダウンロード
+
+---
+
+## 環境変数
+
+| 変数名 | 用途 | 必須 | 取得先 |
+|---|---|---|---|
+| `GROQ_API_KEY` | 音声文字起こし（whisper-large-v3） | 録音・ファイルタブで必要 | https://console.groq.com/keys |
+| `OPENAI_API_KEY` | 日報要約・生成（gpt-4o-mini） | 任意（未設定はテキストそのまま整形） | https://platform.openai.com/api-keys |
+
+> **セキュリティ:** キーの実値（`gsk_...` や `sk-...` 等）は `.env.local` や Vercel の Sensitive 変数として管理し、コードやチャットには絶対に貼り付けないでください。
 
 ---
 
@@ -17,17 +28,18 @@ npm run dev
 **環境変数の設定（初回のみ）:**
 
 ```bash
-cp ../.env.example .env.local
-# .env.local を開いて GROQ_API_KEY を設定する
+cp ../.env.example app/.env.local
+# .env.local を開いて各キーを設定する
 ```
 
-> `GROQ_API_KEY` がなくても「テキスト貼り付け」モードは動作します（LLM 要約なし）。
+> `GROQ_API_KEY` がなくても「テキスト貼り付け」モードは動作します（UI に案内が表示されます）。
+> `OPENAI_API_KEY` がなくてもアプリは落ちません（AI 要約なしでテキストをそのまま整形します）。
 
 ローカルでは処理結果を `outputs/` ディレクトリに `.md` / `.json` で保存します。
 
 ---
 
-## Vercel でデプロイ（友達に URL で見せる）
+## Vercel でデプロイ
 
 ### 手順
 
@@ -35,14 +47,15 @@ cp ../.env.example .env.local
 2. https://vercel.com/new でリポジトリをインポート
 3. **「Root Directory」を `app` に設定する**（⚠️ここが重要）
 4. Framework は **Next.js** が自動検出される
-5. **「Environment Variables」に `GROQ_API_KEY` を追加する**（下記参照）
+5. **「Environment Variables」に API キーを追加する**（下記参照）
 6. 「Deploy」をクリック
 
 ```
 Project Settings
 ├── Root Directory: app      ← ここを必ず設定する
 └── Environment Variables
-    └── GROQ_API_KEY = YOUR_GROQ_API_KEY
+    ├── GROQ_API_KEY    = YOUR_GROQ_API_KEY     （録音・ファイルタブに必要）
+    └── OPENAI_API_KEY  = YOUR_OPENAI_API_KEY   （AI 要約に必要）
 ```
 
 > **Note:** `app/` 配下が Next.js プロジェクトのルートです。Root Directory を設定しないとビルドが失敗します。
@@ -52,15 +65,14 @@ Project Settings
 デプロイ後に追加・変更する場合:
 
 1. Vercel のプロジェクトページ → **Settings** → **Environment Variables**
-2. 以下を追加:
+2. 以下を追加（**Sensitive** にチェックすること）:
 
 | Name | Value | Environments |
 |---|---|---|
 | `GROQ_API_KEY` | Groq のキー | Production, Preview, Development |
+| `OPENAI_API_KEY` | OpenAI のキー | Production, Preview, Development |
 
 3. **Save** → **Redeploy** で反映される
-
-> Groq のキーは https://console.groq.com/keys で無料取得できます。
 
 ### Vercel 上の動作の違い
 
@@ -73,15 +85,15 @@ Project Settings
 
 ## 使い方
 
-### テキスト貼り付け（推奨・GROQ_API_KEY なしでも動く）
+### テキスト貼り付け（GROQ_API_KEY なしでも動く）
 
 1. SuperWhisper などで録音・文字起こしし、テキストをコピー
-2. GENBA-OS を開く → **「テキスト貼り付け」タブ**（デフォルト）
-3. 工事名・場所を入力
+2. GENBA-OS を開く → **「貼り付け」タブ**（デフォルト）
+3. 工事名・場所を入力（テキストから候補チップが自動表示される）
 4. テキスト欄を長押し → **ペースト**
 5. **「日報を生成する」**をタップ
 
-> `GROQ_API_KEY` を設定すると Groq LLM が日報を自動整形します。未設定の場合はテキストをそのまま整形します。
+> `OPENAI_API_KEY` を設定すると AI が日報を自動整形します。未設定の場合はテキストをそのまま整形します。
 
 ### ブラウザで録音（GROQ_API_KEY 必要）
 
@@ -92,15 +104,20 @@ Project Settings
 
 ### 音声ファイルをアップロード（GROQ_API_KEY 必要）
 
-1. **「音声ファイル」タブ**を選択
+1. **「ファイル」タブ**を選択
 2. 工事名・場所を入力
-3. 音声ファイル（m4a / wav / mp3）を選択 → **「実行」**をタップ
+3. 音声ファイル（m4a / wav / mp3）を選択 → **「日報を生成する」**をタップ
+
+### ダウンロードについて
+
+- `.md` ダウンロード: **UTF-8 BOM 付き**で保存されます（Windows メモ帳や LINE に貼り付けても文字化けしません）
+- `.json` ダウンロード: BOM なし（プログラム処理用）
 
 ---
 
 ## API
 
-`POST /api/summarize`（JSON — テキスト貼り付け・録音モード）
+`POST /api/summarize`（JSON — テキスト貼り付けモード）
 
 | フィールド | 型 | 説明 |
 |---|---|---|
@@ -108,13 +125,19 @@ Project Settings
 | `location` | string | 場所 |
 | `transcription` | string | 文字起こしテキスト |
 
-`POST /api/upload`（multipart/form-data — 音声ファイルモード）
+`POST /api/upload`（multipart/form-data — 録音・ファイルモード）
 
 | フィールド | 型 | 説明 |
 |---|---|---|
 | `constructionName` | string | 工事名 |
 | `location` | string | 場所 |
 | `audio` | File | 音声ファイル |
+
+`GET /api/health`（環境変数の設定状況確認）
+
+```json
+{ "groqKeySet": true, "openaiKeySet": false }
+```
 
 共通レスポンス:
 
@@ -135,11 +158,11 @@ Project Settings
 
 | ファイル | 現在の実装 | 差し替え先の例 |
 |---|---|---|
-| `lib/transcribe.ts` | Groq whisper-large-v3 ✅ | Azure Speech, Google STT |
-| `lib/summarize.ts` | Groq llama-3.3-70b ✅ | Claude API, GPT-4o |
+| `lib/transcribe.ts` | Groq whisper-large-v3 | Azure Speech, Google STT |
+| `lib/summarize.ts` | OpenAI gpt-4o-mini | Claude API, Gemini |
 
 環境変数は `.env.example` を参照:
 
 ```bash
-cp ../.env.example .env.local  # ← app/ ディレクトリ内で実行
+cp ../.env.example app/.env.local
 ```
