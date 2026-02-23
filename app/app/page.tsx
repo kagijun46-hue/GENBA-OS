@@ -293,6 +293,8 @@ export default function Home() {
         >
           {isProcessing
             ? "処理中..."
+            : status === "error"
+            ? "再試行"
             : mode === "paste"
             ? "日報を生成する"
             : "実行"}
@@ -337,9 +339,11 @@ export default function Home() {
           borderRadius: 10,
           color: "#c00",
           fontSize: 14,
-          lineHeight: 1.6,
+          lineHeight: 1.7,
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
         }}>
-          エラー: {error}
+          {error}
         </div>
       )}
 

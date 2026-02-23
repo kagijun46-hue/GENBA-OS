@@ -15,6 +15,9 @@ const MIME_MAP: Record<string, string> = {
   webm: "audio/webm",
 };
 
+// 429 リトライ間隔 ms（3s → 8s）
+const RETRY_DELAYS_MS = [3000, 8000];
+
 /** API 呼び出し失敗を呼び出し元に伝えるカスタムエラー */
 export class TranscribeError extends Error {
   constructor(
@@ -28,6 +31,44 @@ export class TranscribeError extends Error {
 
 function getExt(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Whisper API を最大 3 回まで呼ぶ（429 の場合のみリトライ）
+ */
+async function callWhisper(
+  audioBuffer: Buffer,
+  filename: string,
+  mimeType: string,
+  openai: OpenAI
+): Promise<string> {
+  const maxAttempts = 1 + RETRY_DELAYS_MS.length; // 3
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const file = await toFile(audioBuffer, filename, { type: mimeType });
+      const response = await openai.audio.transcriptions.create({
+        file,
+        model: "whisper-1",
+        language: "ja",
+      });
+      return response.text;
+    } catch (err) {
+      const e = err as { status?: number; message?: string; error?: { code?: string } };
+
+      if (e.status === 429 && attempt < maxAttempts - 1) {
+        // レート制限 → 少し待ってリトライ
+        await sleep(RETRY_DELAYS_MS[attempt]);
+        continue;
+      }
+      throw err; // 最終試行失敗 or 429 以外 → 上位へ
+    }
+  }
+  throw new Error("unreachable");
 }
 
 /**
@@ -64,18 +105,11 @@ export async function transcribe(audioBuffer: Buffer, filename: string): Promise
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
   try {
-    const file = await toFile(audioBuffer, filename, { type: mimeType });
-    const response = await openai.audio.transcriptions.create({
-      file,
-      model: "whisper-1",
-      language: "ja",
-    });
-    return response.text;
+    return await callWhisper(audioBuffer, filename, mimeType, openai);
   } catch (err) {
     if (err instanceof TranscribeError) throw err;
 
-    // OpenAI SDK が投げる APIError をユーザー向けメッセージに変換
-    const e = err as { status?: number; message?: string; code?: string; error?: { code?: string } };
+    const e = err as { status?: number; message?: string; error?: { code?: string } };
 
     if (e.status === 401) {
       throw new TranscribeError(
@@ -85,7 +119,9 @@ export async function transcribe(audioBuffer: Buffer, filename: string): Promise
     }
     if (e.status === 429) {
       throw new TranscribeError(
-        "OpenAI API のレート制限に達しました。しばらく待ってから再試行してください。",
+        "OpenAI API のレート制限を超えました（リトライ済み）。\n" +
+          "無料枠の場合は https://platform.openai.com/settings/organization/billing でクレジットを追加すると解消されます。" +
+          "しばらく待ってから再試行してください。",
         429
       );
     }
