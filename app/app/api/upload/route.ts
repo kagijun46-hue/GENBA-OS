@@ -3,7 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { transcribe, TranscribeError } from "@/lib/transcribe";
-import { summarize, toMarkdown } from "@/lib/summarize";
+import { summarize, toMarkdown, SummarizeError } from "@/lib/summarize";
 import { saveReport } from "@/lib/save";
 
 export async function POST(req: NextRequest) {
@@ -44,6 +44,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     if (err instanceof TranscribeError) {
+      return NextResponse.json({ error: err.userMessage }, { status: err.statusCode });
+    }
+    if (err instanceof SummarizeError) {
       return NextResponse.json({ error: err.userMessage }, { status: err.statusCode });
     }
     console.error("[/api/upload]", err);

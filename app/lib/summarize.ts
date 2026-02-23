@@ -1,4 +1,4 @@
-import Groq from "groq-sdk";
+import OpenAI from "openai";
 
 export interface DailyReport {
   date: string;
@@ -14,6 +14,17 @@ interface LLMFields {
   workContent: string;
   issues: string;
   nextActions: string;
+}
+
+/** OpenAI API 呼び出し失敗を呼び出し元に伝えるカスタムエラー */
+export class SummarizeError extends Error {
+  constructor(
+    public readonly userMessage: string,
+    public readonly statusCode: number = 500
+  ) {
+    super(userMessage);
+    this.name = "SummarizeError";
+  }
 }
 
 const SYSTEM_PROMPT = `あなたは建設現場の日報作成を支援するアシスタントです。
@@ -34,10 +45,10 @@ async function extractWithLLM(
   constructionName: string,
   location: string
 ): Promise<LLMFields> {
-  const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  const completion = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       {
@@ -61,8 +72,8 @@ async function extractWithLLM(
 }
 
 /**
- * 現場日報テンプレート要約 — Groq llama-3.3-70b-versatile
- * GROQ_API_KEY が未設定の場合はテキストをそのまま整形して返す（フォールバック）
+ * 現場日報テンプレート要約 — OpenAI gpt-4o-mini
+ * OPENAI_API_KEY が未設定の場合はテキストをそのまま整形して返す（フォールバック）
  * 差し替えポイント: このファイルを書き換えるだけで別 LLM に乗り換えられる
  */
 export async function summarize(
@@ -73,7 +84,7 @@ export async function summarize(
   const today = new Date().toISOString().split("T")[0];
   const base = { date: today, constructionName, location, transcription };
 
-  if (!process.env.GROQ_API_KEY) {
+  if (!process.env.OPENAI_API_KEY) {
     // キーなし → テキストをそのまま作業内容として整形
     return { ...base, workContent: transcription, issues: "特になし", nextActions: "特になし" };
   }
@@ -82,6 +93,23 @@ export async function summarize(
     const fields = await extractWithLLM(transcription, constructionName, location);
     return { ...base, ...fields };
   } catch (err) {
+    const e = err as { status?: number; message?: string };
+
+    // サーフェスすべきエラーは SummarizeError として再スロー
+    if (e.status === 401) {
+      throw new SummarizeError(
+        "OPENAI_API_KEY が無効です。https://platform.openai.com/api-keys で確認してください。",
+        401
+      );
+    }
+    if (e.status === 429) {
+      throw new SummarizeError(
+        "OpenAI API のレート制限を超えました。しばらく待ってから再試行してください。",
+        429
+      );
+    }
+
+    // それ以外は黙ってフォールバック
     console.error("[summarize] LLM 失敗、フォールバック:", err);
     return { ...base, workContent: transcription, issues: "特になし", nextActions: "特になし" };
   }

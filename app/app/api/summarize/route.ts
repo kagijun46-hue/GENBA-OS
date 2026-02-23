@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { summarize, toMarkdown } from "@/lib/summarize";
+import { summarize, toMarkdown, SummarizeError } from "@/lib/summarize";
 import { saveReport } from "@/lib/save";
 
 export async function POST(req: NextRequest) {
@@ -33,6 +33,9 @@ export async function POST(req: NextRequest) {
       slug,
     });
   } catch (err) {
+    if (err instanceof SummarizeError) {
+      return NextResponse.json({ error: err.userMessage }, { status: err.statusCode });
+    }
     console.error("[/api/summarize]", err);
     return NextResponse.json({ error: "サーバーエラーが発生しました" }, { status: 500 });
   }
