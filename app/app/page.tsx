@@ -37,8 +37,11 @@ interface Result {
 }
 
 interface HealthData {
-  groqKeySet: boolean;
+  groqKeySet:   boolean;
   openaiKeySet: boolean;
+  vercelEnv:    string;
+  region:       string;
+  ts:           string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -219,13 +222,14 @@ export default function Home() {
     };
   }, []);
 
-  // health check on mount
-  useEffect(() => {
-    fetch("/api/health")
+  // health check on mount（+ 手動再確認）
+  function fetchHealth() {
+    fetch("/api/health", { cache: "no-store" })
       .then((r) => r.json())
       .then((d: HealthData) => setHealth(d))
       .catch(() => {});
-  }, []);
+  }
+  useEffect(() => { fetchHealth(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Feature A: debounced auto-extract (600ms)
   useEffect(() => {
@@ -547,20 +551,45 @@ export default function Home() {
             }}>
               <strong>⚠ GROQ_API_KEY が未設定です</strong><br />
               録音・ファイルタブの文字起こしには Groq API キーが必要です。<br />
-              Vercel: <code style={{ background: "#3A2F00", padding: "1px 5px", borderRadius: 3 }}>
-                Settings → Environment Variables
-              </code> に追加してください。<br />
-              <button
-                type="button"
-                onClick={() => switchMode("paste")}
-                style={{
-                  marginTop: 8, fontSize: 13, fontWeight: 700,
-                  color: T.yellow, background: "none", border: "none",
-                  cursor: "pointer", padding: 0, textDecoration: "underline",
-                }}
-              >
-                → 代わりに「貼り付け」タブを使う（SuperWhisper 推奨）
-              </button>
+              Vercel の <strong>Project</strong> Settings → Environment Variables → Production に{" "}
+              <code style={{ background: "#3A2F00", padding: "1px 5px", borderRadius: 3 }}>
+                GROQ_API_KEY
+              </code>{" "}
+              を追加後、<strong>Redeploy</strong> してください。
+              {/* 診断情報（環境変数の値は一切含まない） */}
+              {health && (
+                <div style={{
+                  marginTop: 8, fontSize: 11, color: "#D97706",
+                  fontFamily: "monospace",
+                }}>
+                  [診断] env:{health.vercelEnv} region:{health.region} ts:{health.ts.slice(11, 19)}
+                </div>
+              )}
+              <div style={{ marginTop: 10, display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => switchMode("paste")}
+                  style={{
+                    fontSize: 13, fontWeight: 700,
+                    color: T.yellow, background: "none", border: "none",
+                    cursor: "pointer", padding: 0, textDecoration: "underline",
+                  }}
+                >
+                  → 貼り付けタブを使う（SuperWhisper 推奨）
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchHealth}
+                  style={{
+                    fontSize: 12, fontWeight: 600,
+                    color: "#A3A3A3", background: "none",
+                    border: "1px solid #555", borderRadius: T.radius,
+                    cursor: "pointer", padding: "2px 8px",
+                  }}
+                >
+                  ↺ 再確認
+                </button>
+              </div>
             </div>
           )}
 
