@@ -1,0 +1,4 @@
+# genba-os Vercelプロジェクトからshift-makerを除外
+# shift-makerは別のVercelプロジェクトとして管理する
+shift-maker/
+shift-maker/**
