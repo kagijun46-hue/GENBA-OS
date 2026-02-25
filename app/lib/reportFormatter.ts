@@ -5,16 +5,7 @@ export interface ReportMeta {
   project?: string;  // 案件
 }
 
-type SectionKey =
-  | "morning"
-  | "afternoon"
-  | "quantity"
-  | "tomorrow"
-  | "preparation"
-  | "members"
-  | "notes";
-
-interface ParsedSections {
+export interface ParsedSections {
   morning: string[];
   afternoon: string[];
   quantity: string[];
@@ -29,8 +20,9 @@ const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 function formatDateWithWeekday(dateStr: string): string {
   if (!dateStr) return "未記入";
   const normalized = dateStr.replace(/\//g, "-");
-  // Append time to avoid timezone offset issues
-  const d = new Date(normalized.length === 10 ? normalized + "T00:00:00" : normalized);
+  const d = new Date(
+    normalized.length === 10 ? normalized + "T00:00:00" : normalized
+  );
   if (isNaN(d.getTime())) return dateStr;
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -38,7 +30,57 @@ function formatDateWithWeekday(dateStr: string): string {
   return `${y}/${m}/${day}(${WEEKDAYS[d.getDay()]})`;
 }
 
-// Ordered so that more specific patterns match first (午後 before 午前)
+function formatSection(items: string[]): string {
+  if (items.length === 0) return "・未記入";
+  return items.map((item) => `・${item}`).join("\n");
+}
+
+/** Pure formatter: takes pre-parsed sections + meta → fixed template string */
+export function formatDailyReport(
+  sections: ParsedSections,
+  meta: ReportMeta
+): string {
+  const date = formatDateWithWeekday(meta.date ?? "");
+  const siteName = meta.siteName?.trim() || "未記入";
+  const team = meta.team?.trim() || "未記入";
+  const project = meta.project?.trim() || "未記入";
+
+  return [
+    "お疲れ様です。",
+    "本日の作業が終了しました。",
+    "",
+    `【日付】${date}`,
+    `【現場】${siteName}`,
+    `【班】${team}`,
+    `【案件】${project}`,
+    "",
+    "【本日の作業内容】",
+    "■午前",
+    formatSection(sections.morning),
+    "■午後",
+    formatSection(sections.afternoon),
+    "",
+    "【出来高 / 数量】",
+    formatSection(sections.quantity),
+    "",
+    "【明日の作業】",
+    formatSection(sections.tomorrow),
+    "",
+    "【準備物 / 段取り】",
+    formatSection(sections.preparation),
+    "",
+    "【作業メンバー】",
+    formatSection(sections.members),
+    "",
+    "【連絡事項 / 注意点】",
+    formatSection(sections.notes),
+  ].join("\n");
+}
+
+// ── Regex-based fallback (used when GROQ_API_KEY is not set) ─────────────────
+
+type SectionKey = keyof ParsedSections;
+
 const SECTION_PATTERNS: Array<[RegExp, SectionKey]> = [
   [/午後|夕方/, "afternoon"],
   [/午前|午前中/, "morning"],
@@ -56,7 +98,6 @@ function detectSection(line: string): SectionKey | null {
   return null;
 }
 
-// Remove leading bullets/markers and trim
 function cleanLine(line: string): string {
   return line
     .replace(/^[\s　]*[・\-\–—•*＊◆◇▶▷→►]\s*/, "")
@@ -64,12 +105,8 @@ function cleanLine(line: string): string {
     .trim();
 }
 
-function formatSection(items: string[]): string {
-  if (items.length === 0) return "・未記入";
-  return items.map((item) => `・${item}`).join("\n");
-}
-
-function parseInput(input: string): ParsedSections {
+/** Regex-based section detection — fallback when AI extraction is unavailable */
+export function parseFromText(input: string): ParsedSections {
   const sections: ParsedSections = {
     morning: [],
     afternoon: [],
@@ -79,7 +116,6 @@ function parseInput(input: string): ParsedSections {
     members: [],
     notes: [],
   };
-
   if (!input.trim()) return sections;
 
   const lines = input
@@ -87,65 +123,12 @@ function parseInput(input: string): ParsedSections {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  let currentSection: SectionKey = "morning";
-
+  let current: SectionKey = "morning";
   for (const line of lines) {
     const detected = detectSection(line);
-    if (detected) {
-      currentSection = detected;
-    }
+    if (detected) current = detected;
     const content = cleanLine(line);
-    if (content) {
-      sections[currentSection].push(content);
-    }
+    if (content) sections[current].push(content);
   }
-
   return sections;
-}
-
-export function formatDailyReport(input: string, meta: ReportMeta): string {
-  const s = parseInput(input);
-  const date = formatDateWithWeekday(meta.date ?? "");
-  const siteName = meta.siteName?.trim() || "未記入";
-  const team = meta.team?.trim() || "未記入";
-  const project = meta.project?.trim() || "未記入";
-
-  const morning = formatSection(s.morning);
-  const afternoon = formatSection(s.afternoon);
-  const quantity = formatSection(s.quantity);
-  const tomorrow = formatSection(s.tomorrow);
-  const preparation = formatSection(s.preparation);
-  const members = formatSection(s.members);
-  const notes = formatSection(s.notes);
-
-  return [
-    "お疲れ様です。",
-    "本日の作業が終了しました。",
-    "",
-    `【日付】${date}`,
-    `【現場】${siteName}`,
-    `【班】${team}`,
-    `【案件】${project}`,
-    "",
-    "【本日の作業内容】",
-    "■午前",
-    morning,
-    "■午後",
-    afternoon,
-    "",
-    "【出来高 / 数量】",
-    quantity,
-    "",
-    "【明日の作業】",
-    tomorrow,
-    "",
-    "【準備物 / 段取り】",
-    preparation,
-    "",
-    "【作業メンバー】",
-    members,
-    "",
-    "【連絡事項 / 注意点】",
-    notes,
-  ].join("\n");
 }

@@ -5,29 +5,30 @@ import { useRef, useState } from "react";
 const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
 
 interface Props {
-  rawText: string;
-  onRawTextChange: (text: string) => void;
+  /** Called with the transcribed text when transcription succeeds */
+  onTranscribed: (text: string) => void;
 }
 
-export function AudioUploader({ rawText, onRawTextChange }: Props) {
+export function AudioUploader({ onTranscribed }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    setFile(f);
-    setError(null);
-  };
-
   const isSizeOver = file ? file.size > MAX_SIZE : false;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFile(e.target.files?.[0] ?? null);
+    setError(null);
+    setDone(false);
+  };
 
   const handleTranscribe = async () => {
     if (!file || isSizeOver) return;
     setIsLoading(true);
     setError(null);
-
+    setDone(false);
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -37,7 +38,8 @@ export function AudioUploader({ rawText, onRawTextChange }: Props) {
         setError(data.error ?? "文字起こしに失敗しました。");
         return;
       }
-      onRawTextChange(data.text ?? "");
+      onTranscribed(data.text ?? "");
+      setDone(true);
     } catch {
       setError("通信エラーが発生しました。ネットワーク接続を確認してください。");
     } finally {
@@ -47,13 +49,12 @@ export function AudioUploader({ rawText, onRawTextChange }: Props) {
 
   const fileSizeMB = file ? (file.size / 1024 / 1024).toFixed(1) : null;
 
-  const s = styles;
-
   return (
     <div>
-      {/* File picker */}
       <div style={{ marginBottom: 12 }}>
-        <label style={s.label}>音声ファイル</label>
+        <label style={s.label}>
+          音声ファイル（m4a / mp3 / wav / mp4 / webm、最大 25MB）
+        </label>
         <input
           ref={inputRef}
           type="file"
@@ -62,123 +63,85 @@ export function AudioUploader({ rawText, onRawTextChange }: Props) {
           style={s.fileInput}
         />
         {file && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: isSizeOver ? "#EF4444" : "#757575",
-            }}
-          >
+          <p style={{ margin: "6px 0 0", fontSize: 12, color: isSizeOver ? "#F87171" : "#555" }}>
             {file.name}　{fileSizeMB} MB
-            {isSizeOver && "　—　25MB を超えています。"}
-          </div>
+            {isSizeOver && "　— 25MB を超えています。"}
+          </p>
         )}
       </div>
 
-      {/* Transcribe button */}
       <button
         onClick={handleTranscribe}
         disabled={!file || isSizeOver || isLoading}
         style={{
           ...s.btn,
-          background:
-            !file || isSizeOver || isLoading ? "#333" : "#4A90E2",
-          color: !file || isSizeOver || isLoading ? "#757575" : "#FFF",
-          cursor:
-            !file || isSizeOver || isLoading ? "not-allowed" : "pointer",
-          marginBottom: 12,
+          background: !file || isSizeOver || isLoading ? "#1A1A1A" : "#3B82F6",
+          color: !file || isSizeOver || isLoading ? "#444" : "#fff",
+          cursor: !file || isSizeOver || isLoading ? "not-allowed" : "pointer",
         }}
       >
-        {isLoading ? "文字起こし中..." : "文字起こし開始"}
+        {isLoading ? "文字起こし中…" : "文字起こし開始"}
       </button>
 
-      {/* Loading */}
       {isLoading && (
-        <div style={{ marginBottom: 12, fontSize: 13, color: "#4A90E2" }}>
+        <p style={{ fontSize: 13, color: "#3B82F6", margin: "10px 0 0" }}>
           ⏳ 音声を解析中です。しばらくお待ちください…
-        </div>
+        </p>
       )}
 
-      {/* Error */}
+      {done && (
+        <p style={{ fontSize: 13, color: "#34D399", margin: "10px 0 0" }}>
+          ✓ 文字起こし完了。上のテキストエリアに反映されました。
+        </p>
+      )}
+
       {error && (
-        <div style={s.errorBox}>
-          {error}
-        </div>
+        <div style={s.errorBox}>{error}</div>
       )}
-
-      {/* Raw text textarea */}
-      <div>
-        <label style={s.label}>
-          文字起こし結果
-          <span style={{ color: "#757575", fontWeight: 400 }}>
-            （編集可能）
-          </span>
-        </label>
-        <textarea
-          value={rawText}
-          onChange={(e) => onRawTextChange(e.target.value)}
-          placeholder="文字起こし後にここへ自動反映されます。直接入力・編集も可能です。"
-          rows={7}
-          style={s.textarea}
-        />
-      </div>
     </div>
   );
 }
 
-const styles = {
+const s = {
   label: {
     display: "block",
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#BDBDBD",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#555",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.05em",
     marginBottom: 6,
   } as React.CSSProperties,
 
   fileInput: {
     display: "block",
     width: "100%",
-    padding: "8px 12px",
-    background: "#2C2C2C",
-    border: "1px solid #3A3A3A",
+    boxSizing: "border-box" as const,
+    padding: "9px 12px",
+    background: "#1E1E1E",
+    border: "1px solid #2C2C2C",
     borderRadius: 6,
-    color: "#F5F5F5",
+    color: "#C0C0C0",
     fontSize: 14,
     cursor: "pointer",
-    boxSizing: "border-box",
   } as React.CSSProperties,
 
   btn: {
-    display: "inline-block",
     padding: "10px 20px",
     border: "none",
     borderRadius: 6,
     fontSize: 14,
     fontWeight: 600,
-    transition: "background 0.15s",
+    transition: "opacity 0.15s",
   } as React.CSSProperties,
 
   errorBox: {
-    marginBottom: 12,
-    padding: "8px 12px",
-    background: "rgba(239,68,68,0.1)",
-    border: "1px solid #EF4444",
+    marginTop: 10,
+    padding: "9px 12px",
+    background: "rgba(248,113,113,0.07)",
+    border: "1px solid rgba(248,113,113,0.25)",
     borderRadius: 6,
-    color: "#EF4444",
+    color: "#F87171",
     fontSize: 13,
-  } as React.CSSProperties,
-
-  textarea: {
-    width: "100%",
-    boxSizing: "border-box",
-    padding: "10px 12px",
-    background: "#2C2C2C",
-    border: "1px solid #3A3A3A",
-    borderRadius: 6,
-    color: "#F5F5F5",
-    fontSize: 14,
-    lineHeight: 1.7,
-    resize: "vertical",
-    fontFamily: "inherit",
   } as React.CSSProperties,
 } as const;
