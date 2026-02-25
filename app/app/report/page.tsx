@@ -9,60 +9,32 @@ export default function ReportPage() {
   const [rawText, setRawText] = useState("");
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#1A1A1A",
-        padding: "24px 16px 48px",
-      }}
-    >
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        {/* Header */}
-        <div style={{ marginBottom: 24 }}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              marginBottom: 6,
-            }}
-          >
-            <Link
-              href="/"
-              style={{
-                fontSize: 13,
-                color: "#757575",
-                textDecoration: "none",
-              }}
-            >
-              ← ホーム
-            </Link>
-          </div>
-          <h1
-            style={{
-              fontSize: 22,
-              fontWeight: 700,
-              color: "#F5F5F5",
-              margin: "0 0 4px",
-            }}
-          >
-            現場日報
-          </h1>
-          <p style={{ fontSize: 13, color: "#757575", margin: 0 }}>
-            音声をアップロードして日報を自動生成します。対応形式: m4a / mp3 /
-            wav / mp4 / webm　上限: 25MB
+    <main style={s.main}>
+      <div style={s.container}>
+        {/* ── Header ─────────────────────────────────── */}
+        <header style={{ marginBottom: 32 }}>
+          <Link href="/" style={s.backLink}>← ホーム</Link>
+          <h1 style={s.h1}>現場日報</h1>
+          <p style={s.subtitle}>
+            音声 → 文字起こし → AI抽出 → LINE用テンプレ日報
           </p>
-        </div>
+        </header>
 
-        {/* Step 1: Upload & Transcribe */}
-        <section style={cardStyle}>
-          <h2 style={cardHeading}>① 音声アップロード・文字起こし</h2>
+        {/* ── Step 1: 音声 / テキスト ─────────────────── */}
+        <section style={s.card}>
+          <h2 style={s.cardTitle}>
+            <span style={s.step}>01</span>
+            音声アップロード・テキスト入力
+          </h2>
           <AudioUploader rawText={rawText} onRawTextChange={setRawText} />
         </section>
 
-        {/* Step 2: Build report */}
-        <section style={cardStyle}>
-          <h2 style={cardHeading}>② 日報生成</h2>
+        {/* ── Step 2: 日報生成 ─────────────────────────── */}
+        <section style={s.card}>
+          <h2 style={s.cardTitle}>
+            <span style={s.step}>02</span>
+            日報生成
+          </h2>
           <ReportBuilder rawText={rawText} />
         </section>
       </div>
@@ -70,17 +42,75 @@ export default function ReportPage() {
   );
 }
 
-const cardStyle: React.CSSProperties = {
-  background: "#242424",
-  border: "1px solid #3A3A3A",
-  borderRadius: 8,
-  padding: 20,
-  marginBottom: 16,
-};
+const s = {
+  main: {
+    minHeight: "100vh",
+    background: "#0C0C0C",
+    padding: "28px 16px 64px",
+  } as React.CSSProperties,
 
-const cardHeading: React.CSSProperties = {
-  fontSize: 15,
-  fontWeight: 600,
-  color: "#BDBDBD",
-  margin: "0 0 16px",
-};
+  container: {
+    maxWidth: 640,
+    margin: "0 auto",
+  } as React.CSSProperties,
+
+  backLink: {
+    display: "inline-block",
+    fontSize: 13,
+    color: "#444",
+    textDecoration: "none",
+    marginBottom: 16,
+    letterSpacing: "0.02em",
+  } as React.CSSProperties,
+
+  h1: {
+    fontSize: 26,
+    fontWeight: 800,
+    color: "#F0F0F0",
+    margin: "0 0 6px",
+    letterSpacing: "-0.02em",
+  } as React.CSSProperties,
+
+  subtitle: {
+    fontSize: 13,
+    color: "#555",
+    margin: 0,
+    letterSpacing: "0.02em",
+  } as React.CSSProperties,
+
+  card: {
+    background: "#141414",
+    border: "1px solid #222",
+    borderRadius: 10,
+    padding: "24px 22px",
+    marginBottom: 14,
+  } as React.CSSProperties,
+
+  cardTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontSize: 14,
+    fontWeight: 700,
+    color: "#666",
+    margin: "0 0 20px",
+    textTransform: "uppercase",
+    letterSpacing: "0.06em",
+  } as React.CSSProperties,
+
+  step: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 24,
+    height: 24,
+    background: "#1E1E1E",
+    border: "1px solid #2C2C2C",
+    borderRadius: 4,
+    fontSize: 11,
+    fontWeight: 800,
+    color: "#3B82F6",
+    letterSpacing: 0,
+    flexShrink: 0,
+  } as React.CSSProperties,
+} as const;

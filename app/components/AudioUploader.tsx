@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-const MAX_SIZE = 25 * 1024 * 1024; // 25 MB
+const MAX_SIZE = 25 * 1024 * 1024;
 
 interface Props {
   rawText: string;
@@ -10,24 +10,31 @@ interface Props {
 }
 
 export function AudioUploader({ rawText, onRawTextChange }: Props) {
+  const [openaiAvailable, setOpenaiAvailable] = useState<boolean | null>(null); // null = checking
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0] ?? null;
-    setFile(f);
-    setError(null);
-  };
+  // Check whether OPENAI_API_KEY is configured on the server
+  useEffect(() => {
+    fetch("/api/health")
+      .then((r) => r.json())
+      .then((d) => setOpenaiAvailable(!!d.openaiKeySet))
+      .catch(() => setOpenaiAvailable(false));
+  }, []);
 
   const isSizeOver = file ? file.size > MAX_SIZE : false;
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFile(e.target.files?.[0] ?? null);
+    setError(null);
+  };
 
   const handleTranscribe = async () => {
     if (!file || isSizeOver) return;
     setIsLoading(true);
     setError(null);
-
     try {
       const fd = new FormData();
       fd.append("file", file);
@@ -46,78 +53,78 @@ export function AudioUploader({ rawText, onRawTextChange }: Props) {
   };
 
   const fileSizeMB = file ? (file.size / 1024 / 1024).toFixed(1) : null;
-
-  const s = styles;
+  const canTranscribe = openaiAvailable === true;
 
   return (
     <div>
-      {/* File picker */}
-      <div style={{ marginBottom: 12 }}>
-        <label style={s.label}>音声ファイル</label>
-        <input
-          ref={inputRef}
-          type="file"
-          accept="audio/*,.m4a,.mp3,.wav,.mp4,.webm,.ogg,.flac"
-          onChange={handleFileChange}
-          style={s.fileInput}
-        />
-        {file && (
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 12,
-              color: isSizeOver ? "#EF4444" : "#757575",
-            }}
-          >
-            {file.name}　{fileSizeMB} MB
-            {isSizeOver && "　—　25MB を超えています。"}
-          </div>
-        )}
-      </div>
+      {/* OPENAI_API_KEY missing → guidance */}
+      {openaiAvailable === false && (
+        <div style={s.infoBox}>
+          <span style={{ fontWeight: 600 }}>OPENAI_API_KEY が未設定</span> のため音声文字起こしは無効です。
+          <br />
+          文字起こし済みテキストを下のテキストエリアに直接貼り付けてください。
+        </div>
+      )}
+
+      {/* File picker — shown only when key is available */}
+      {canTranscribe && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={s.label}>音声ファイル（m4a / mp3 / wav / mp4 / webm、最大 25MB）</label>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="audio/*,.m4a,.mp3,.wav,.mp4,.webm,.ogg,.flac"
+            onChange={handleFileChange}
+            style={s.fileInput}
+          />
+          {file && (
+            <p style={{ margin: "6px 0 0", fontSize: 12, color: isSizeOver ? C.error : C.muted }}>
+              {file.name}　{fileSizeMB} MB
+              {isSizeOver && "　— 25MB を超えています。"}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Transcribe button */}
-      <button
-        onClick={handleTranscribe}
-        disabled={!file || isSizeOver || isLoading}
-        style={{
-          ...s.btn,
-          background:
-            !file || isSizeOver || isLoading ? "#333" : "#4A90E2",
-          color: !file || isSizeOver || isLoading ? "#757575" : "#FFF",
-          cursor:
-            !file || isSizeOver || isLoading ? "not-allowed" : "pointer",
-          marginBottom: 12,
-        }}
-      >
-        {isLoading ? "文字起こし中..." : "文字起こし開始"}
-      </button>
+      {canTranscribe && (
+        <button
+          onClick={handleTranscribe}
+          disabled={!file || isSizeOver || isLoading}
+          style={{
+            ...s.btn,
+            background: !file || isSizeOver || isLoading ? C.btnDisabledBg : C.accent,
+            color: !file || isSizeOver || isLoading ? C.muted : "#fff",
+            cursor: !file || isSizeOver || isLoading ? "not-allowed" : "pointer",
+            marginBottom: 14,
+          }}
+        >
+          {isLoading ? "文字起こし中…" : "文字起こし開始"}
+        </button>
+      )}
 
-      {/* Loading */}
       {isLoading && (
-        <div style={{ marginBottom: 12, fontSize: 13, color: "#4A90E2" }}>
+        <p style={{ fontSize: 13, color: C.accent, margin: "0 0 12px" }}>
           ⏳ 音声を解析中です。しばらくお待ちください…
-        </div>
+        </p>
       )}
 
-      {/* Error */}
-      {error && (
-        <div style={s.errorBox}>
-          {error}
-        </div>
-      )}
+      {error && <div style={s.errorBox}>{error}</div>}
 
-      {/* Raw text textarea */}
+      {/* Textarea — always shown */}
       <div>
         <label style={s.label}>
           文字起こし結果
-          <span style={{ color: "#757575", fontWeight: 400 }}>
-            （編集可能）
-          </span>
+          <span style={{ color: C.muted, fontWeight: 400 }}>（編集可能）</span>
         </label>
         <textarea
           value={rawText}
           onChange={(e) => onRawTextChange(e.target.value)}
-          placeholder="文字起こし後にここへ自動反映されます。直接入力・編集も可能です。"
+          placeholder={
+            canTranscribe
+              ? "文字起こし後にここへ自動反映されます。直接入力・編集も可能です。"
+              : "ここに文字起こし済みのテキストを貼り付けてください。"
+          }
           rows={7}
           style={s.textarea}
         />
@@ -126,26 +133,36 @@ export function AudioUploader({ rawText, onRawTextChange }: Props) {
   );
 }
 
-const styles = {
+// Design tokens
+const C = {
+  accent: "#3B82F6",
+  error: "#F87171",
+  muted: "#666",
+  btnDisabledBg: "#1E1E1E",
+} as const;
+
+const s = {
   label: {
     display: "block",
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 600,
-    color: "#BDBDBD",
+    color: "#888",
     marginBottom: 6,
+    textTransform: "uppercase",
+    letterSpacing: "0.05em",
   } as React.CSSProperties,
 
   fileInput: {
     display: "block",
     width: "100%",
-    padding: "8px 12px",
-    background: "#2C2C2C",
-    border: "1px solid #3A3A3A",
+    boxSizing: "border-box",
+    padding: "9px 12px",
+    background: "#1E1E1E",
+    border: "1px solid #2C2C2C",
     borderRadius: 6,
-    color: "#F5F5F5",
+    color: "#E0E0E0",
     fontSize: 14,
     cursor: "pointer",
-    boxSizing: "border-box",
   } as React.CSSProperties,
 
   btn: {
@@ -155,16 +172,27 @@ const styles = {
     borderRadius: 6,
     fontSize: 14,
     fontWeight: 600,
-    transition: "background 0.15s",
+    transition: "opacity 0.15s",
+  } as React.CSSProperties,
+
+  infoBox: {
+    marginBottom: 16,
+    padding: "10px 14px",
+    background: "rgba(59,130,246,0.08)",
+    border: "1px solid rgba(59,130,246,0.25)",
+    borderRadius: 6,
+    color: "#93C5FD",
+    fontSize: 13,
+    lineHeight: 1.6,
   } as React.CSSProperties,
 
   errorBox: {
-    marginBottom: 12,
-    padding: "8px 12px",
-    background: "rgba(239,68,68,0.1)",
-    border: "1px solid #EF4444",
+    marginBottom: 14,
+    padding: "10px 14px",
+    background: "rgba(248,113,113,0.08)",
+    border: "1px solid rgba(248,113,113,0.3)",
     borderRadius: 6,
-    color: "#EF4444",
+    color: "#F87171",
     fontSize: 13,
   } as React.CSSProperties,
 
@@ -172,13 +200,14 @@ const styles = {
     width: "100%",
     boxSizing: "border-box",
     padding: "10px 12px",
-    background: "#2C2C2C",
-    border: "1px solid #3A3A3A",
+    background: "#1E1E1E",
+    border: "1px solid #2C2C2C",
     borderRadius: 6,
-    color: "#F5F5F5",
+    color: "#E0E0E0",
     fontSize: 14,
     lineHeight: 1.7,
     resize: "vertical",
     fontFamily: "inherit",
+    minHeight: 140,
   } as React.CSSProperties,
 } as const;
