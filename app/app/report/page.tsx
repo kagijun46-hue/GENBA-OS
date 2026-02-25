@@ -16,27 +16,43 @@ export default function ReportPage() {
           <Link href="/" style={s.backLink}>← ホーム</Link>
           <h1 style={s.h1}>現場日報</h1>
           <p style={s.subtitle}>
-            音声 → 文字起こし → AI抽出 → LINE用テンプレ日報
+            テキスト貼り付け → AI抽出 → LINE用テンプレ日報
           </p>
         </header>
 
-        {/* ── Step 1: 音声 / テキスト ─────────────────── */}
+        {/* ── Main card ─────────────────────────────── */}
         <section style={s.card}>
-          <h2 style={s.cardTitle}>
-            <span style={s.step}>01</span>
-            音声アップロード・テキスト入力
-          </h2>
-          <AudioUploader rawText={rawText} onRawTextChange={setRawText} />
-        </section>
+          {/* Paste textarea */}
+          <div style={{ marginBottom: 24 }}>
+            <label style={s.label}>文字起こしテキスト</label>
+            <textarea
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              placeholder={
+                "SuperWhisper 等で文字起こしたテキストをここに貼り付けてください。\n\n例:\n午前は型枠の設置を行いました。午後はコンクリート打設。\n明日は養生と片付け予定。メンバーは山田・田中・鈴木の3名。"
+              }
+              rows={8}
+              style={s.textarea}
+            />
+          </div>
 
-        {/* ── Step 2: 日報生成 ─────────────────────────── */}
-        <section style={s.card}>
-          <h2 style={s.cardTitle}>
-            <span style={s.step}>02</span>
-            日報生成
-          </h2>
+          {/* Meta + generate + output */}
           <ReportBuilder rawText={rawText} />
         </section>
+
+        {/* ── 音声文字起こし（将来機能、折りたたみ） ─── */}
+        <details style={s.details}>
+          <summary style={s.summary}>
+            🎤　音声から文字起こし（将来機能）
+          </summary>
+          <div style={s.detailBody}>
+            <p style={s.detailNote}>
+              OPENAI_API_KEY を設定すると、音声ファイルを直接アップロードして
+              Whisper で文字起こしできます。文字起こし結果は上の textarea に自動反映されます。
+            </p>
+            <AudioUploader onTranscribed={setRawText} />
+          </div>
+        </details>
       </div>
     </main>
   );
@@ -75,7 +91,6 @@ const s = {
     fontSize: 13,
     color: "#555",
     margin: 0,
-    letterSpacing: "0.02em",
   } as React.CSSProperties,
 
   card: {
@@ -86,31 +101,56 @@ const s = {
     marginBottom: 14,
   } as React.CSSProperties,
 
-  cardTitle: {
-    display: "flex",
-    alignItems: "center",
-    gap: 10,
-    fontSize: 14,
+  label: {
+    display: "block",
+    fontSize: 11,
     fontWeight: 700,
-    color: "#666",
-    margin: "0 0 20px",
-    textTransform: "uppercase",
-    letterSpacing: "0.06em",
+    color: "#555",
+    textTransform: "uppercase" as const,
+    letterSpacing: "0.08em",
+    marginBottom: 8,
   } as React.CSSProperties,
 
-  step: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: 24,
-    height: 24,
-    background: "#1E1E1E",
-    border: "1px solid #2C2C2C",
-    borderRadius: 4,
-    fontSize: 11,
-    fontWeight: 800,
-    color: "#3B82F6",
-    letterSpacing: 0,
-    flexShrink: 0,
+  textarea: {
+    width: "100%",
+    boxSizing: "border-box" as const,
+    padding: "12px 14px",
+    background: "#1A1A1A",
+    border: "1px solid #2A2A2A",
+    borderRadius: 8,
+    color: "#E0E0E0",
+    fontSize: 14,
+    lineHeight: 1.75,
+    resize: "vertical" as const,
+    fontFamily: "inherit",
+    minHeight: 160,
+  } as React.CSSProperties,
+
+  details: {
+    border: "1px solid #1E1E1E",
+    borderRadius: 8,
+    overflow: "hidden",
+  } as React.CSSProperties,
+
+  summary: {
+    padding: "12px 16px",
+    fontSize: 13,
+    color: "#484848",
+    cursor: "pointer",
+    listStyle: "none",
+    userSelect: "none" as const,
+    letterSpacing: "0.02em",
+  } as React.CSSProperties,
+
+  detailBody: {
+    padding: "0 16px 20px",
+    borderTop: "1px solid #1E1E1E",
+  } as React.CSSProperties,
+
+  detailNote: {
+    fontSize: 13,
+    color: "#484848",
+    lineHeight: 1.6,
+    margin: "14px 0 16px",
   } as React.CSSProperties,
 } as const;
