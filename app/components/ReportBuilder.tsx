@@ -110,8 +110,10 @@ export function ReportBuilder({ rawText }: Props) {
       {output && (
         <div style={{ marginTop: 16 }}>
           <div style={s.outputHeader}>
-            <span style={{ fontSize: 13, color: "#BDBDBD" }}>生成された日報</span>
-            <div style={{ display: "flex", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#4A90E2" }}>
+              LINE用日報（出力）
+            </span>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 onClick={handleCopy}
                 style={{
@@ -123,6 +125,14 @@ export function ReportBuilder({ rawText }: Props) {
               >
                 {copied ? "コピー済み ✓" : "コピー"}
               </button>
+              <a
+                href={`https://line.me/R/msg/text/?${encodeURIComponent(output)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={s.lineBtn}
+              >
+                LINEで共有
+              </a>
               <button onClick={handleClear} style={s.smallBtn}>
                 クリア
               </button>
@@ -195,6 +205,20 @@ const styles = {
     fontSize: 13,
     cursor: "pointer",
     transition: "all 0.15s",
+  } as React.CSSProperties,
+
+  lineBtn: {
+    display: "inline-block",
+    padding: "6px 14px",
+    background: "#06C755",
+    border: "1px solid #06C755",
+    borderRadius: 6,
+    color: "#FFF",
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    textDecoration: "none",
+    lineHeight: "1.4",
   } as React.CSSProperties,
 
   pre: {
